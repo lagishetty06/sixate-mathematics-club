@@ -9,7 +9,8 @@ import {
   getDocs, 
   runTransaction,
   query,
-  orderBy
+  orderBy,
+  onSnapshot
 } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
@@ -185,39 +186,96 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
     createdAt: nowIso
   };
 
-  // Always save submission to local storage store so it appears in admin lists immediately
-  currentApps.unshift(newAppData);
-  saveStoredApps(currentApps);
-
-  // Broadcast registration event across open admin browser tabs/windows
-  try {
-    const bc = new BroadcastChannel('sixate_registration_channel');
-    bc.postMessage({ type: 'NEW_REGISTRATION', application: newAppData });
-    bc.close();
-  } catch (e) {
-    // Ignore BroadcastChannel errors on older browsers
-  }
-
   // Attempt real Firestore write if active
-  try {
-    const isFirebaseActive = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.startsWith("AIzaSyDummy") ? false : true;
-    if (isFirebaseActive) {
+  const isFirebaseActive = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.startsWith("AIzaSyDummy") ? false : true;
+  if (isFirebaseActive) {
+    try {
       const rollDocRef = doc(db, 'applications', normRoll);
+      const rollSnap = await getDoc(rollDocRef);
+      if (rollSnap.exists()) {
+        const existingData = rollSnap.data();
+        throw { isDuplicate: true, applicationId: existingData.applicationId || 'EXISTING' };
+      }
+
+      if (normEmail && normEmail !== '') {
+        const emailDocRef = doc(db, 'emailIndex', normEmail);
+        const emailSnap = await getDoc(emailDocRef);
+        if (emailSnap.exists()) {
+          const existingData = emailSnap.data();
+          throw { isDuplicate: true, applicationId: existingData.applicationId || 'EXISTING' };
+        }
+      }
+
       await setDoc(rollDocRef, newAppData);
       if (normEmail && normEmail !== '') {
         await setDoc(doc(db, 'emailIndex', normEmail), { applicationId: formattedAppId, rollNumber: normRoll, email: normEmail });
       }
+    } catch (err: any) {
+      if (err.isDuplicate) {
+        throw err;
+      }
+      console.error('Firestore registration failed:', {
+        code: err.code || 'UNKNOWN_ERROR',
+        message: err.message || String(err),
+        operation: 'setDoc applications',
+        environment: import.meta.env.MODE
+      });
+      throw new Error('Registration could not be submitted. Please try again.');
     }
-  } catch (err: any) {
-    console.warn('Firestore submission notice (stored in hybrid local session):', err);
   }
+
+  // Save to local storage store & broadcast
+  currentApps.unshift(newAppData);
+  saveStoredApps(currentApps);
+
+  try {
+    const bc = new BroadcastChannel('sixate_registration_channel');
+    bc.postMessage({ type: 'NEW_REGISTRATION', application: newAppData });
+    bc.close();
+  } catch (e) {}
 
   return { applicationId: formattedAppId, docId: normRoll };
 }
 
 // ----------------------------------------------------
-// ADMIN FETCH & ACTION API FUNCTIONS
+// ADMIN FETCH & REAL-TIME STREAMING API FUNCTIONS
 // ----------------------------------------------------
+
+export function subscribeToApplications(callback: (applications: StudentApplication[]) => void): () => void {
+  const isFirebaseActive = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.startsWith("AIzaSyDummy") ? false : true;
+
+  if (isFirebaseActive) {
+    try {
+      const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const firestoreApps = snapshot.docs.map(doc => doc.data() as StudentApplication);
+        const localApps = getStoredApps();
+        const appMap = new Map<string, StudentApplication>();
+        firestoreApps.forEach(app => appMap.set(app.id || app.rollNumber, app));
+        localApps.forEach(app => {
+          if (!appMap.has(app.id || app.rollNumber)) {
+            appMap.set(app.id || app.rollNumber, app);
+          }
+        });
+        callback(Array.from(appMap.values()));
+      }, (err) => {
+        console.error('Firestore real-time subscription error:', {
+          code: err.code,
+          message: err.message,
+          operation: 'onSnapshot applications',
+          environment: import.meta.env.MODE
+        });
+        callback(getStoredApps());
+      });
+      return unsubscribe;
+    } catch (e) {
+      console.warn('onSnapshot subscription setup notice:', e);
+    }
+  }
+
+  callback(getStoredApps());
+  return () => {};
+}
 
 export async function fetchAllApplications(): Promise<StudentApplication[]> {
   const localApps = getStoredApps();

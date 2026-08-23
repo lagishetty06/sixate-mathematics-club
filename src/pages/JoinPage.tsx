@@ -190,7 +190,7 @@ export const JoinPage: React.FC = () => {
       if (err && err.isDuplicate) {
         setDuplicateError({ isDuplicate: true, applicationId: err.applicationId || 'SIXATE-2026-REG' });
       } else {
-        setGeneralError('Registration could not be submitted. Please check your details and try again.');
+        setGeneralError(err.message || 'Registration could not be submitted. Please try again.');
       }
     }
   };

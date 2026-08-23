@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
-import { fetchAllApplications } from '../../lib/firebase';
+import { fetchAllApplications, subscribeToApplications } from '../../lib/firebase';
 import { StudentApplication } from '../../types';
 import { formatDateTime } from '../../lib/exportEngine';
 import { StudentDetailModal } from '../../components/admin/StudentDetailModal';
@@ -15,7 +15,8 @@ import {
   Eye, 
   UserCheck,
   TrendingUp,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -24,21 +25,20 @@ export const AdminDashboard: React.FC = () => {
   const [selectedStudent, setSelectedStudent] = useState<StudentApplication | null>(null);
 
   useEffect(() => {
-    loadData();
+    setIsLoading(true);
+    const unsubscribe = subscribeToApplications((data) => {
+      setApplications(data);
+      setIsLoading(false);
+    });
+
     const handleUpdate = () => loadData();
     window.addEventListener('storage', handleUpdate);
     window.addEventListener('focus', handleUpdate);
 
-    let bc: BroadcastChannel | null = null;
-    try {
-      bc = new BroadcastChannel('sixate_registration_channel');
-      bc.onmessage = () => loadData();
-    } catch (e) {}
-
     return () => {
+      unsubscribe();
       window.removeEventListener('storage', handleUpdate);
       window.removeEventListener('focus', handleUpdate);
-      if (bc) bc.close();
     };
   }, []);
 
@@ -81,6 +81,13 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={loadData}
+              className="px-3.5 py-2.5 rounded-xl font-heading font-bold text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+              title="Refresh Firestore Applications Data"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} /> REFRESH
+            </button>
             <Link
               to="/admin/students"
               className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs text-white bg-gradient-to-r from-sixate-violet via-sixate-purple to-sixate-green shadow-lg shadow-sixate-purple/20 flex items-center gap-2"

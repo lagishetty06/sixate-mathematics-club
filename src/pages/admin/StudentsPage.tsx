@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
-import { fetchAllApplications } from '../../lib/firebase';
+import { fetchAllApplications, subscribeToApplications } from '../../lib/firebase';
 import { StudentApplication, ApplicationFilterState } from '../../types';
 import { exportStudentsToExcel, exportStudentsToCSV, formatDateTime } from '../../lib/exportEngine';
 import { StudentDetailModal } from '../../components/admin/StudentDetailModal';
@@ -14,7 +14,8 @@ import {
   ChevronLeft, 
   ChevronRight,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 
 export const StudentsPage: React.FC = () => {
@@ -39,21 +40,20 @@ export const StudentsPage: React.FC = () => {
   });
 
   useEffect(() => {
-    loadData();
+    setIsLoading(true);
+    const unsubscribe = subscribeToApplications((data) => {
+      setApplications(data);
+      setIsLoading(false);
+    });
+
     const handleUpdate = () => loadData();
     window.addEventListener('storage', handleUpdate);
     window.addEventListener('focus', handleUpdate);
 
-    let bc: BroadcastChannel | null = null;
-    try {
-      bc = new BroadcastChannel('sixate_registration_channel');
-      bc.onmessage = () => loadData();
-    } catch (e) {}
-
     return () => {
+      unsubscribe();
       window.removeEventListener('storage', handleUpdate);
       window.removeEventListener('focus', handleUpdate);
-      if (bc) bc.close();
     };
   }, []);
 
@@ -191,15 +191,23 @@ export const StudentsPage: React.FC = () => {
           {/* Export Buttons */}
           <div className="flex flex-wrap items-center gap-3">
             <button
+              onClick={loadData}
+              className="px-3.5 py-2.5 rounded-xl font-heading font-bold text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+              title="Refresh Firestore Applications Data"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} /> REFRESH
+            </button>
+
+            <button
               onClick={handleExcelExport}
-              className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all active:scale-95"
+              className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4" /> 📊 DOWNLOAD EXCEL ({filteredStudents.length})
             </button>
 
             <button
               onClick={handleCSVExport}
-              className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 transition-all active:scale-95"
+              className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
             >
               <FileText className="w-4 h-4 text-sixate-purple" /> 📄 DOWNLOAD CSV
             </button>
