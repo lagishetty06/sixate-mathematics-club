@@ -20,9 +20,9 @@ import { StudentApplication, ApplicationStatus } from '../types';
 // Environment / Public Firebase Config
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDummySixateApiKeyForFallbackMode",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "sixate-math-club.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "sixate-math-club",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sixate-math-club.appspot.com",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "sixate-math-club-2026.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "sixate-math-club-2026",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sixate-math-club-2026.appspot.com",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "102938475612",
   appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:102938475612:web:abcdef1234567890"
 };
