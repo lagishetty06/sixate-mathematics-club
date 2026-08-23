@@ -15,6 +15,7 @@ import {
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { StudentApplication, ApplicationStatus, AdminUser } from '../types';
+import { pushToGlobalCloud, fetchFromGlobalCloud, updateInGlobalCloud } from './cloudRelay';
 
 // Environment / Public Firebase Config
 const firebaseConfig = {
@@ -224,9 +225,10 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
     }
   }
 
-  // Save to local storage store & broadcast
+  // Save to local storage store, push to global cloud relay, & broadcast
   currentApps.unshift(newAppData);
   saveStoredApps(currentApps);
+  await pushToGlobalCloud(newAppData);
 
   try {
     const bc = new BroadcastChannel('sixate_registration_channel');
@@ -242,66 +244,84 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
 // ----------------------------------------------------
 
 export function subscribeToApplications(callback: (applications: StudentApplication[]) => void): () => void {
-  const isFirebaseActive = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.startsWith("AIzaSyDummy") ? false : true;
+  let isSubscribed = true;
 
-  if (isFirebaseActive) {
-    try {
+  const loadAndNotify = async () => {
+    if (!isSubscribed) return;
+    const data = await fetchAllApplications();
+    if (isSubscribed) callback(data);
+  };
+
+  // Immediate fetch
+  loadAndNotify();
+
+  // Poll cloud relay & storage every 3 seconds for instant cross-device updates
+  const intervalId = setInterval(loadAndNotify, 3000);
+
+  // Firestore onSnapshot if configured
+  let unsubscribeFirestore: (() => void) | null = null;
+  try {
+    const isFirebaseActive = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.startsWith("AIzaSyDummy") ? false : true;
+    if (isFirebaseActive) {
       const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const firestoreApps = snapshot.docs.map(doc => doc.data() as StudentApplication);
-        const localApps = getStoredApps();
-        const appMap = new Map<string, StudentApplication>();
-        firestoreApps.forEach(app => appMap.set(app.id || app.rollNumber, app));
-        localApps.forEach(app => {
-          if (!appMap.has(app.id || app.rollNumber)) {
-            appMap.set(app.id || app.rollNumber, app);
-          }
-        });
-        callback(Array.from(appMap.values()));
+      unsubscribeFirestore = onSnapshot(q, () => {
+        loadAndNotify();
       }, (err) => {
-        console.error('Firestore real-time subscription error:', {
-          code: err.code,
-          message: err.message,
-          operation: 'onSnapshot applications',
-          environment: import.meta.env.MODE
-        });
-        callback(getStoredApps());
+        console.warn('Firestore onSnapshot notice:', err);
       });
-      return unsubscribe;
-    } catch (e) {
-      console.warn('onSnapshot subscription setup notice:', e);
     }
-  }
+  } catch (e) {}
 
-  callback(getStoredApps());
-  return () => {};
+  return () => {
+    isSubscribed = false;
+    clearInterval(intervalId);
+    if (unsubscribeFirestore) unsubscribeFirestore();
+  };
 }
 
 export async function fetchAllApplications(): Promise<StudentApplication[]> {
   const localApps = getStoredApps();
+  const cloudApps = await fetchFromGlobalCloud();
 
+  const appMap = new Map<string, StudentApplication>();
+
+  // 1. Load cloud relay apps
+  cloudApps.forEach(app => {
+    if (app && (app.id || app.rollNumber)) {
+      appMap.set(app.id || app.rollNumber, app);
+    }
+  });
+
+  // 2. Load Firestore apps if active
   try {
     const isFirebaseActive = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.startsWith("AIzaSyDummy") ? false : true;
     if (isFirebaseActive) {
       const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
-        const firestoreApps = snapshot.docs.map(doc => doc.data() as StudentApplication);
-        const appMap = new Map<string, StudentApplication>();
-        firestoreApps.forEach(app => appMap.set(app.id || app.rollNumber, app));
-        localApps.forEach(app => {
-          if (!appMap.has(app.id || app.rollNumber)) {
+        snapshot.docs.forEach(doc => {
+          const app = doc.data() as StudentApplication;
+          if (app && (app.id || app.rollNumber)) {
             appMap.set(app.id || app.rollNumber, app);
           }
         });
-        return Array.from(appMap.values());
       }
     }
   } catch (e) {
-    console.warn('Firestore fetch notice (using local store):', e);
+    console.warn('Firestore fetch notice (using hybrid store):', e);
   }
 
-  return localApps;
+  // 3. Load local apps
+  localApps.forEach(app => {
+    if (app && (app.id || app.rollNumber) && !appMap.has(app.id || app.rollNumber)) {
+      appMap.set(app.id || app.rollNumber, app);
+    }
+  });
+
+  const merged = Array.from(appMap.values());
+  // Sync back to local store
+  saveStoredApps(merged);
+  return merged;
 }
 
 export async function updateApplicationStatusInDb(
@@ -354,9 +374,10 @@ export async function updateApplicationStatusInDb(
     console.warn('Firestore update warning:', e);
   }
 
-  // Update local store
+  // Update local store & cloud relay
   currentApps[targetAppIndex] = targetApp;
   saveStoredApps(currentApps);
+  await updateInGlobalCloud(currentApps);
 
   return targetApp;
 }
