@@ -3,13 +3,13 @@ import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { SixateLogo } from '../../components/common/SixateLogo';
 import { MathBackground } from '../../components/common/MathBackground';
-import { ShieldCheck, Lock, Mail, ArrowLeft, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Lock, User, ArrowLeft, AlertCircle } from 'lucide-react';
 
 export const AdminLoginPage: React.FC = () => {
   const { isAuthenticated, login } = useAuth();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -26,7 +26,7 @@ export const AdminLoginPage: React.FC = () => {
     setInfoMessage(null);
 
     try {
-      await login(email, password);
+      await login(username, password);
       navigate('/admin/dashboard');
     } catch (err: any) {
       setIsSubmitting(false);
@@ -85,14 +85,15 @@ export const AdminLoginPage: React.FC = () => {
 
           <form onSubmit={handleLogin} className="space-y-4 text-xs">
             <div className="space-y-1.5">
-              <label className="font-heading font-semibold text-slate-200">Admin Email</label>
+              <label className="font-heading font-semibold text-slate-200">Admin Username</label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@sixate.edu"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="admin"
+                  autoComplete="username"
                   className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-sixate-purple font-body"
                   required
                 />
