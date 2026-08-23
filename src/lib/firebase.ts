@@ -36,136 +36,35 @@ const STORAGE_KEY_APPS = 'sixate_applications_db_v1';
 const STORAGE_KEY_COUNTERS = 'sixate_counters_db_v1';
 const STORAGE_KEY_ADMINS = 'sixate_admins_db_v1';
 
-const INITIAL_MOCK_STUDENTS: StudentApplication[] = [
-  {
-    id: '22a01cse',
-    applicationId: 'SIXATE-2026-00001',
-    fullName: 'Aarav Sharma',
-    rollNumberDisplay: '22A01CSE',
-    emailDisplay: 'aarav.sharma@college.edu',
-    email: 'aarav.sharma@college.edu',
-    rollNumber: '22a01cse',
-    phone: '+919876543210',
-    gender: 'Male',
-    department: 'CSE',
-    year: '3rd Year',
-    section: 'A',
-    interests: ['Algebra', 'Calculus', 'Number Theory', 'Competitive Mathematics'],
-    mathInterestRating: 5,
-    skills: ['Problem Solving', 'Coding', 'Event Management'],
-    competitionExperience: 'Yes',
-    achievements: 'Secured 1st rank in Inter-College Math Olympiad 2025.',
-    reasonForJoining: 'I want to deepen my understanding of discrete structures and prepare for advanced competitive math events with like-minded peers.',
-    contribution: 'I can mentor junior students and organize problem-solving sprint sessions.',
-    preferredActivities: ['Puzzle Competitions', 'Coding Challenges', 'Workshops'],
-    linkedin: 'https://linkedin.com/in/aarav-sharma-math',
-    github: 'https://github.com/aarav-sharma',
-    profilePhotoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-    status: 'approved',
-    memberId: 'SIXATE-M-0001',
-    statusHistory: [
-      { status: 'pending', changedBy: 'System', timestamp: '2026-08-20T10:00:00Z' },
-      { status: 'approved', changedBy: 'admin@sixate.edu', timestamp: '2026-08-21T14:30:00Z', notes: 'Excellent academic record.' }
-    ],
-    createdAt: '2026-08-20T10:00:00Z'
-  },
-  {
-    id: '23a04aiml',
-    applicationId: 'SIXATE-2026-00002',
-    fullName: 'Ananya Verma',
-    rollNumberDisplay: '23A04AIML',
-    emailDisplay: 'ananya.verma@college.edu',
-    email: 'ananya.verma@college.edu',
-    rollNumber: '23a04aiml',
-    phone: '+919812345678',
-    gender: 'Female',
-    department: 'CSE (AI & ML)',
-    year: '2nd Year',
-    section: 'B',
-    interests: ['Statistics', 'Probability', 'Discrete Mathematics', 'Cryptography'],
-    mathInterestRating: 5,
-    skills: ['Coding', 'Graphic Designing', 'Public Speaking'],
-    competitionExperience: 'Yes',
-    achievements: 'Finalist in National Hackathon Data Science challenge.',
-    reasonForJoining: 'Mathematics is the foundation of Artificial Intelligence. SIXATE gives me the community to explore high-level probability and graph theory.',
-    contribution: 'Graphic design for club posters and managing social media outreach.',
-    preferredActivities: ['Mathematics Quizzes', 'Guest Lectures', 'Research / Projects'],
-    linkedin: 'https://linkedin.com/in/ananya-verma-ai',
-    github: 'https://github.com/ananya-verma',
-    profilePhotoUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80',
-    status: 'pending',
-    statusHistory: [
-      { status: 'pending', changedBy: 'System', timestamp: '2026-08-22T09:15:00Z' }
-    ],
-    createdAt: '2026-08-22T09:15:00Z'
-  },
-  {
-    id: '24a08ece',
-    applicationId: 'SIXATE-2026-00003',
-    fullName: 'Rohan Kulkarni',
-    rollNumberDisplay: '24A08ECE',
-    emailDisplay: 'rohan.kulkarni@college.edu',
-    email: 'rohan.kulkarni@college.edu',
-    rollNumber: '24a08ece',
-    phone: '9765432109',
-    gender: 'Male',
-    department: 'ECE',
-    year: '1st Year',
-    section: 'C',
-    interests: ['Geometry', 'Logical Reasoning', 'Mathematical Puzzles'],
-    mathInterestRating: 4,
-    skills: ['Content Writing', 'Video Editing', 'Problem Solving'],
-    competitionExperience: 'No',
-    reasonForJoining: 'To build strong analytical thinking right from my first year and learn problem solving strategies.',
-    contribution: 'Can write club newsletters and edit video recaps of events.',
-    preferredActivities: ['Puzzle Competitions', 'Mathematical Games'],
-    status: 'shortlisted',
-    statusHistory: [
-      { status: 'pending', changedBy: 'System', timestamp: '2026-08-22T11:45:00Z' },
-      { status: 'shortlisted', changedBy: 'admin@sixate.edu', timestamp: '2026-08-22T16:00:00Z', notes: 'Promising 1st year candidate.' }
-    ],
-    createdAt: '2026-08-22T11:45:00Z'
-  },
-  {
-    id: '21a02eee',
-    applicationId: 'SIXATE-2026-00004',
-    fullName: 'Priya Sundaram',
-    rollNumberDisplay: '21A02EEE',
-    emailDisplay: 'priya.sundaram@college.edu',
-    email: 'priya.sundaram@college.edu',
-    rollNumber: '21a02eee',
-    phone: '+919988776655',
-    gender: 'Female',
-    department: 'EEE',
-    year: '4th Year',
-    interests: ['Applied Mathematics', 'Calculus', 'Statistics'],
-    mathInterestRating: 4,
-    skills: ['Team Management', 'Teaching / Mentoring'],
-    competitionExperience: 'Yes',
-    achievements: 'Published a undergraduate paper on Differential Equations applications.',
-    reasonForJoining: 'I wish to contribute back to the club before graduating by mentoring younger math enthusiasts.',
-    contribution: 'Conducting guest sessions on applied calculus in engineering.',
-    preferredActivities: ['Workshops', 'Guest Lectures', 'Research / Projects'],
-    status: 'approved',
-    memberId: 'SIXATE-M-0002',
-    statusHistory: [
-      { status: 'pending', changedBy: 'System', timestamp: '2026-08-18T08:30:00Z' },
-      { status: 'approved', changedBy: 'admin@sixate.edu', timestamp: '2026-08-19T12:00:00Z' }
-    ],
-    createdAt: '2026-08-18T08:30:00Z'
-  }
-];
+const INITIAL_MOCK_STUDENTS: StudentApplication[] = [];
 
 function getStoredApps(): StudentApplication[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY_APPS);
     if (!data) {
-      localStorage.setItem(STORAGE_KEY_APPS, JSON.stringify(INITIAL_MOCK_STUDENTS));
-      return INITIAL_MOCK_STUDENTS;
+      localStorage.setItem(STORAGE_KEY_APPS, JSON.stringify([]));
+      return [];
     }
     return JSON.parse(data);
   } catch (e) {
-    return INITIAL_MOCK_STUDENTS;
+    return [];
+  }
+}
+
+export function clearAllRegistrations(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY_APPS);
+    localStorage.setItem(STORAGE_KEY_APPS, JSON.stringify([]));
+    localStorage.removeItem(STORAGE_KEY_COUNTERS);
+    
+    // Broadcast clear event
+    try {
+      const bc = new BroadcastChannel('sixate_registration_channel');
+      bc.postMessage({ type: 'CLEAR_DATA' });
+      bc.close();
+    } catch (e) {}
+  } catch (e) {
+    console.error('Failed to clear storage:', e);
   }
 }
 

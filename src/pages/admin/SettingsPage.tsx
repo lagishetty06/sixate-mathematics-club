@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
 import { useAuth } from '../../context/AuthContext';
+import { clearAllRegistrations } from '../../lib/firebase';
 import { AdminUser } from '../../types';
 import { 
   Settings, 
@@ -212,6 +213,30 @@ export const SettingsPage: React.FC = () => {
             </form>
           </div>
 
+        </div>
+
+        {/* Danger Zone: Reset Database */}
+        <div className="p-6 sm:p-8 rounded-3xl bg-rose-950/20 border border-rose-500/30 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-heading font-bold text-lg text-rose-300 flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-rose-400" /> Reset Student Applications Data
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Clear all student registration records and reset the system for brand new registrations.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                clearAllRegistrations();
+                setToast('✓ All student registration data has been cleared.');
+                setTimeout(() => setToast(null), 4000);
+              }}
+              className="px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white bg-rose-600 hover:bg-rose-500 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" /> CLEAR ALL REGISTRATIONS
+            </button>
+          </div>
         </div>
 
         {/* Super Admin Section: Admin Account Management */}
