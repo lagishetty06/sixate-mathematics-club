@@ -76,18 +76,24 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
   console.log('[SIXATE] Registration submission started');
   console.log('[SIXATE] Writing to Firestore applications...');
 
+  const rollDocRef = doc(db, 'applications', normRoll);
+
+  // 1. Soft duplicate roll number check (prevent offline/unavailable getDoc from blocking submission)
   try {
-    // 1. Check duplicate roll number document in Firestore
-    const rollDocRef = doc(db, 'applications', normRoll);
     const rollSnap = await getDoc(rollDocRef);
     if (rollSnap.exists()) {
       const existingData = rollSnap.data();
       console.warn('[SIXATE] Duplicate roll number detected in Firestore');
       throw { isDuplicate: true, applicationId: existingData.applicationId || 'EXISTING' };
     }
+  } catch (err: any) {
+    if (err.isDuplicate) throw err;
+    console.warn('[SIXATE] Pre-check getDoc roll number notice:', err?.message || String(err));
+  }
 
-    // 2. Check duplicate email document in Firestore (if email provided)
-    if (normEmail && normEmail !== '') {
+  // 2. Soft duplicate email check (if email provided)
+  if (normEmail && normEmail !== '') {
+    try {
       const emailDocRef = doc(db, 'emailIndex', normEmail);
       const emailSnap = await getDoc(emailDocRef);
       if (emailSnap.exists()) {
@@ -95,65 +101,74 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
         console.warn('[SIXATE] Duplicate email detected in Firestore');
         throw { isDuplicate: true, applicationId: existingData.applicationId || 'EXISTING' };
       }
+    } catch (err: any) {
+      if (err.isDuplicate) throw err;
+      console.warn('[SIXATE] Pre-check getDoc email notice:', err?.message || String(err));
     }
+  }
 
-    // 3. Atomically increment sequential application counter in Firestore
-    const counterRef = doc(db, 'counters', 'applications');
-    let appSeq = 1;
-    try {
-      await runTransaction(db, async (transaction) => {
-        const counterSnap = await transaction.get(counterRef);
-        if (!counterSnap.exists()) {
-          transaction.set(counterRef, { count: 1 });
-          appSeq = 1;
-        } else {
-          appSeq = (counterSnap.data().count || 0) + 1;
-          transaction.update(counterRef, { count: appSeq });
-        }
-      });
-    } catch {
-      appSeq = Date.now() % 100000;
-    }
+  // 3. Increment sequential application counter in Firestore (or fallback to timestamp ID)
+  const counterRef = doc(db, 'counters', 'applications');
+  let appSeq = 1;
+  try {
+    await runTransaction(db, async (transaction) => {
+      const counterSnap = await transaction.get(counterRef);
+      if (!counterSnap.exists()) {
+        transaction.set(counterRef, { count: 1 });
+        appSeq = 1;
+      } else {
+        appSeq = (counterSnap.data().count || 0) + 1;
+        transaction.update(counterRef, { count: appSeq });
+      }
+    });
+  } catch {
+    appSeq = Date.now() % 100000;
+  }
 
-    const paddedSeq = String(appSeq).padStart(5, '0');
-    const formattedAppId = `SIXATE-2026-${paddedSeq}`;
+  const paddedSeq = String(appSeq).padStart(5, '0');
+  const formattedAppId = `SIXATE-2026-${paddedSeq}`;
 
-    const newAppData: StudentApplication = {
-      id: normRoll,
-      applicationId: formattedAppId,
-      fullName: payload.fullName.trim(),
-      rollNumberDisplay: payload.rollNumber.trim(),
-      emailDisplay: payload.email.trim(),
-      email: normEmail,
-      rollNumber: normRoll,
-      phone: payload.phone.trim(),
-      gender: payload.gender,
-      department: payload.department,
-      departmentOther: payload.departmentOther,
-      year: payload.year,
-      section: payload.section?.trim(),
-      interests: payload.interests,
-      interestsOther: payload.interestsOther,
-      mathInterestRating: payload.mathInterestRating,
-      skills: payload.skills,
-      skillsOther: payload.skillsOther,
-      competitionExperience: payload.competitionExperience,
-      achievements: payload.achievements?.trim(),
-      reasonForJoining: payload.reasonForJoining.trim(),
-      contribution: payload.contribution?.trim(),
-      preferredActivities: payload.preferredActivities,
-      linkedin: payload.linkedin?.trim(),
-      github: payload.github?.trim(),
-      profilePhotoUrl: payload.profilePhotoUrl,
-      status: 'pending',
-      statusHistory: [{ status: 'pending', changedBy: 'System', timestamp: nowIso }],
-      createdAt: nowIso
-    };
+  const newAppData: StudentApplication = {
+    id: normRoll,
+    applicationId: formattedAppId,
+    fullName: payload.fullName.trim(),
+    rollNumberDisplay: payload.rollNumber.trim(),
+    emailDisplay: payload.email.trim(),
+    email: normEmail,
+    rollNumber: normRoll,
+    phone: payload.phone.trim(),
+    gender: payload.gender,
+    department: payload.department,
+    departmentOther: payload.departmentOther,
+    year: payload.year,
+    section: payload.section?.trim(),
+    interests: payload.interests,
+    interestsOther: payload.interestsOther,
+    mathInterestRating: payload.mathInterestRating,
+    skills: payload.skills,
+    skillsOther: payload.skillsOther,
+    competitionExperience: payload.competitionExperience,
+    achievements: payload.achievements?.trim(),
+    reasonForJoining: payload.reasonForJoining.trim(),
+    contribution: payload.contribution?.trim(),
+    preferredActivities: payload.preferredActivities,
+    linkedin: payload.linkedin?.trim(),
+    github: payload.github?.trim(),
+    profilePhotoUrl: payload.profilePhotoUrl,
+    status: 'pending',
+    statusHistory: [{ status: 'pending', changedBy: 'System', timestamp: nowIso }],
+    createdAt: nowIso
+  };
 
-    // 4. Write application document to Firestore applications collection
+  try {
+    // 4. Primary Firestore Write: Save application document to applications collection
     await setDoc(rollDocRef, newAppData);
     if (normEmail && normEmail !== '') {
-      await setDoc(doc(db, 'emailIndex', normEmail), { applicationId: formattedAppId, rollNumber: normRoll, email: normEmail });
+      try {
+        await setDoc(doc(db, 'emailIndex', normEmail), { applicationId: formattedAppId, rollNumber: normRoll, email: normEmail });
+      } catch (e) {
+        console.warn('[SIXATE] emailIndex setDoc notice:', e);
+      }
     }
 
     console.log('[SIXATE] Firestore write successful');
@@ -162,9 +177,6 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
 
     return { applicationId: formattedAppId, docId: normRoll };
   } catch (err: any) {
-    if (err.isDuplicate) {
-      throw err;
-    }
     console.error('[SIXATE] Firestore error Code:', err.code || 'UNKNOWN_ERROR', 'Message:', err.message || String(err));
     throw new Error('Registration could not be submitted. Please try again.');
   }
