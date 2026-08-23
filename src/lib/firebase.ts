@@ -115,6 +115,7 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
       const counterSnap = await transaction.get(counterRef);
       if (!counterSnap.exists()) {
         appSeq = 1;
+        transaction.set(counterRef, { count: 1 });
       } else {
         const data = counterSnap.data();
         const currentCount = typeof data.count === 'number' ? data.count : (typeof data.value === 'number' ? data.value : 0);
@@ -286,12 +287,29 @@ export async function updateApplicationStatusInDb(
   const currentData = appSnap.data() as StudentApplication;
   let assignedMemberId = currentData.memberId;
 
-  // Generate Member ID if approving and document does not have one yet
+  // Generate Member ID using counters/members transaction when approving
   if (newStatus === 'approved' && !assignedMemberId) {
-    const allApps = await fetchAllApplications();
-    const approvedCount = allApps.filter(a => a.memberId).length;
-    const nextMemberSeq = String(approvedCount + 1).padStart(4, '0');
-    assignedMemberId = `SIXATE-M-${nextMemberSeq}`;
+    const memberCounterRef = doc(db, 'counters', 'members');
+    let memberSeq = 1;
+    try {
+      await runTransaction(db, async (transaction) => {
+        const counterSnap = await transaction.get(memberCounterRef);
+        if (!counterSnap.exists()) {
+          memberSeq = 1;
+          transaction.set(memberCounterRef, { count: 1 });
+        } else {
+          const data = counterSnap.data();
+          const current = typeof data.count === 'number' ? data.count : 0;
+          memberSeq = current + 1;
+          transaction.update(memberCounterRef, { count: memberSeq });
+        }
+      });
+    } catch (err: any) {
+      console.warn('[SIXATE] Member counter transaction failed, using fallback:', err?.message);
+      memberSeq = Date.now() % 9000 + 1000;
+    }
+    const paddedSeq = String(memberSeq).padStart(4, '0');
+    assignedMemberId = `SIXATE-M-${paddedSeq}`;
   }
 
   const newHistoryEntry = {

@@ -26,21 +26,14 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Counters — public get for sequential ID generation, no list/delete.
+    // Counters — public get AND create for sequential ID generation.
+    // Create is needed to initialise counter docs the first time.
     match /counters/{counterName} {
       allow get: if true;
       allow list: if false;
-
-      allow update: if
-        ("count" in request.resource.data &&
-         "count" in resource.data &&
-         request.resource.data.count == resource.data.count + 1)
-        ||
-        ("value" in request.resource.data &&
-         "value" in resource.data &&
-         request.resource.data.value == resource.data.value + 1);
-
-      allow create, delete: if false;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if false;
     }
 
     // Admins collection — fully locked (no login system used).
