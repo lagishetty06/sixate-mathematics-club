@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
-import { fetchAllApplications } from '../../lib/firebase';
+import { fetchAllApplications, subscribeToApplications } from '../../lib/firebase';
 import { StudentApplication } from '../../types';
 import { exportStudentsToExcel, exportStudentsToCSV, formatDateTime } from '../../lib/exportEngine';
 import { StudentDetailModal } from '../../components/admin/StudentDetailModal';
@@ -23,13 +23,23 @@ export const MembersPage: React.FC = () => {
   const [exportToast, setExportToast] = useState<string | null>(null);
 
   useEffect(() => {
-    loadData();
+    setIsLoading(true);
+    const unsubscribe = subscribeToApplications((data) => {
+      setApplications(data);
+      setIsLoading(false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const loadData = async () => {
     setIsLoading(true);
-    const data = await fetchAllApplications();
-    setApplications(data);
+    try {
+      const data = await fetchAllApplications();
+      setApplications(data);
+    } catch (e) {}
     setIsLoading(false);
   };
 

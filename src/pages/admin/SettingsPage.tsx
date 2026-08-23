@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
 import { useAuth } from '../../context/AuthContext';
-import { clearAllRegistrations } from '../../lib/firebase';
 import { AdminUser } from '../../types';
 import { 
   Settings, 
@@ -12,7 +11,8 @@ import {
   Key, 
   Mail, 
   Building, 
-  CheckCircle2 
+  CheckCircle2,
+  Database
 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
@@ -215,27 +215,20 @@ export const SettingsPage: React.FC = () => {
 
         </div>
 
-        {/* Danger Zone: Reset Database */}
-        <div className="p-6 sm:p-8 rounded-3xl bg-rose-950/20 border border-rose-500/30 space-y-4 shadow-xl">
+        {/* Database Status Section */}
+        <div className="p-6 sm:p-8 rounded-3xl bg-sixate-card/80 border border-sixate-purple/30 space-y-4 shadow-xl">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-heading font-bold text-lg text-rose-300 flex items-center gap-2">
-                <Trash2 className="w-5 h-5 text-rose-400" /> Reset Student Applications Data
+              <h2 className="font-heading font-bold text-lg text-white flex items-center gap-2">
+                <Database className="w-5 h-5 text-sixate-purple" /> Firebase Firestore Database
               </h2>
               <p className="text-xs text-slate-400 mt-1">
-                Clear all student registration records and reset the system for brand new registrations.
+                Student registrations, member rosters, and status history are permanently stored in Google Cloud Firestore.
               </p>
             </div>
-            <button
-              onClick={() => {
-                clearAllRegistrations();
-                setToast('✓ All student registration data has been cleared.');
-                setTimeout(() => setToast(null), 4000);
-              }}
-              className="px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white bg-rose-600 hover:bg-rose-500 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" /> CLEAR ALL REGISTRATIONS
-            </button>
+            <span className="px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+              FIRESTORE ACTIVE
+            </span>
           </div>
         </div>
 

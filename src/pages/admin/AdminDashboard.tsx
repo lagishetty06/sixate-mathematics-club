@@ -22,31 +22,40 @@ import {
 export const AdminDashboard: React.FC = () => {
   const [applications, setApplications] = useState<StudentApplication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<StudentApplication | null>(null);
 
   useEffect(() => {
     setIsLoading(true);
-    const unsubscribe = subscribeToApplications((data) => {
-      setApplications(data);
-      setIsLoading(false);
-    });
-
-    const handleUpdate = () => loadData();
-    window.addEventListener('storage', handleUpdate);
-    window.addEventListener('focus', handleUpdate);
+    setDbError(null);
+    const unsubscribe = subscribeToApplications(
+      (data) => {
+        setApplications(data);
+        setIsLoading(false);
+        setDbError(null);
+      },
+      (err) => {
+        setIsLoading(false);
+        setDbError(err.message || 'Unable to connect to Firebase Firestore database.');
+      }
+    );
 
     return () => {
       unsubscribe();
-      window.removeEventListener('storage', handleUpdate);
-      window.removeEventListener('focus', handleUpdate);
     };
   }, []);
 
   const loadData = async () => {
     setIsLoading(true);
-    const data = await fetchAllApplications();
-    setApplications(data);
-    setIsLoading(false);
+    setDbError(null);
+    try {
+      const data = await fetchAllApplications();
+      setApplications(data);
+      setIsLoading(false);
+    } catch (err: any) {
+      setIsLoading(false);
+      setDbError(err.message || 'Unable to load student registrations from Firestore.');
+    }
   };
 
   const totalCount = applications.length;
@@ -96,6 +105,25 @@ export const AdminDashboard: React.FC = () => {
             </Link>
           </div>
         </div>
+
+        {/* Database Error Banner */}
+        {dbError && (
+          <div className="p-5 rounded-2xl bg-rose-950/40 border border-rose-500/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-6 h-6 text-rose-400 shrink-0" />
+              <div>
+                <h3 className="font-heading font-bold text-sm text-rose-200">Unable to load student registrations</h3>
+                <p className="text-xs text-rose-300/80 mt-0.5">{dbError}</p>
+              </div>
+            </div>
+            <button
+              onClick={loadData}
+              className="px-4 py-2 rounded-xl font-heading font-bold text-xs text-white bg-rose-600 hover:bg-rose-500 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> TRY AGAIN
+            </button>
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">

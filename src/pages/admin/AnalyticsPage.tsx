@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
-import { fetchAllApplications } from '../../lib/firebase';
+import { fetchAllApplications, subscribeToApplications } from '../../lib/firebase';
 import { StudentApplication } from '../../types';
 import { 
   BarChart, 
@@ -25,20 +25,23 @@ export const AnalyticsPage: React.FC = () => {
   const [exportToast, setExportToast] = useState<string | null>(null);
 
   useEffect(() => {
-    loadData();
-    const handleUpdate = () => loadData();
-    window.addEventListener('storage', handleUpdate);
-    window.addEventListener('focus', handleUpdate);
+    setIsLoading(true);
+    const unsubscribe = subscribeToApplications((data) => {
+      setApplications(data);
+      setIsLoading(false);
+    });
+
     return () => {
-      window.removeEventListener('storage', handleUpdate);
-      window.removeEventListener('focus', handleUpdate);
+      unsubscribe();
     };
   }, []);
 
   const loadData = async () => {
     setIsLoading(true);
-    const data = await fetchAllApplications();
-    setApplications(data);
+    try {
+      const data = await fetchAllApplications();
+      setApplications(data);
+    } catch (e) {}
     setIsLoading(false);
   };
 
