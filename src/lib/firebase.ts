@@ -114,15 +114,17 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
     await runTransaction(db, async (transaction) => {
       const counterSnap = await transaction.get(counterRef);
       if (!counterSnap.exists()) {
-        transaction.set(counterRef, { count: 1 });
         appSeq = 1;
       } else {
-        appSeq = (counterSnap.data().count || 0) + 1;
+        const data = counterSnap.data();
+        const currentCount = typeof data.count === 'number' ? data.count : (typeof data.value === 'number' ? data.value : 0);
+        appSeq = currentCount + 1;
         transaction.update(counterRef, { count: appSeq });
       }
     });
-  } catch {
-    appSeq = Date.now() % 100000;
+  } catch (err: any) {
+    console.warn('[SIXATE] Counter transaction notice (falling back to sequence ID):', err?.message || String(err));
+    appSeq = (Date.now() % 90000) + 10000;
   }
 
   const paddedSeq = String(appSeq).padStart(5, '0');
