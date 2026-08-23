@@ -184,6 +184,23 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
   }
 }
 
+// Helper function to seed or update admin authorization document in Firestore
+export async function seedAdminUserDocument(uid: string, email: string, role: string = 'super_admin'): Promise<void> {
+  try {
+    const adminDocRef = doc(db, 'admins', uid);
+    await setDoc(adminDocRef, {
+      uid,
+      email: email.trim().toLowerCase(),
+      role: role,
+      name: email.split('@')[0] || 'Administrator',
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+    console.log('[SIXATE] Successfully seeded Firestore admins document for UID:', uid);
+  } catch (err: any) {
+    console.warn('[SIXATE] Failed to seed admins document in Firestore:', err?.message || String(err));
+  }
+}
+
 // ----------------------------------------------------
 // ADMIN FETCH & REAL-TIME STREAMING API FUNCTIONS
 // ----------------------------------------------------
@@ -193,8 +210,10 @@ export function subscribeToApplications(
   onError?: (err: Error) => void
 ): () => void {
   try {
+    const user = auth.currentUser;
     console.log('[SIXATE] Loading applications...');
     console.log('[SIXATE] Firebase project:', db.app.options.projectId);
+    console.log('[SIXATE] Auth Current User:', user ? { uid: user.uid, email: user.email } : null);
 
     const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(
@@ -223,8 +242,10 @@ export function subscribeToApplications(
 
 export async function fetchAllApplications(): Promise<StudentApplication[]> {
   try {
+    const user = auth.currentUser;
     console.log('[SIXATE] Loading applications...');
     console.log('[SIXATE] Firebase project:', db.app.options.projectId);
+    console.log('[SIXATE] Auth Current User:', user ? { uid: user.uid, email: user.email } : null);
 
     const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);

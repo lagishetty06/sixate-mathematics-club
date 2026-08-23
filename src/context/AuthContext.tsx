@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AdminUser } from '../types';
-import { auth } from '../lib/firebase';
-import { signInWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged, updatePassword } from 'firebase/auth';
+import { auth, seedAdminUserDocument } from '../lib/firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged, updatePassword } from 'firebase/auth';
 
 interface AuthContextType {
   currentUser: AdminUser | null;
@@ -29,18 +29,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        const role = user.email === 'superadmin@sixate.edu' ? 'super_admin' : 'admin';
         const adminData: AdminUser = {
           uid: user.uid,
           email: user.email || 'admin@sixate.edu',
-          role: user.email === 'superadmin@sixate.edu' ? 'super_admin' : 'admin',
+          role: role,
           name: user.displayName || user.email?.split('@')[0] || 'Administrator'
         };
         setCurrentUser(adminData);
         localStorage.setItem(LOCAL_ADMIN_KEY, JSON.stringify(adminData));
+        // Seed admins/{uid} document in Firestore for this Firebase Auth user
+        await seedAdminUserDocument(user.uid, user.email || 'admin@sixate.edu', role);
       } else {
-        // If not logged in via Firebase Auth, check if local fallback session exists
         const saved = localStorage.getItem(LOCAL_ADMIN_KEY);
         if (saved) {
           try {
@@ -60,24 +62,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     const cleanEmail = email.trim().toLowerCase();
     
-    // Try Firebase Auth first
+    // Try Firebase Auth login or register
     try {
-      const isFirebaseActive = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.startsWith("AIzaSyDummy") ? false : true;
-      if (isFirebaseActive) {
+      let userUid: string | null = null;
+      try {
         const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+        userUid = cred.user.uid;
+      } catch (err: any) {
+        // If account doesn't exist yet, create account in Firebase Auth
+        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+          const newCred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+          userUid = newCred.user.uid;
+        } else {
+          throw err;
+        }
+      }
+
+      if (userUid) {
+        const role = cleanEmail.includes('super') ? 'super_admin' : 'admin';
         const adminData: AdminUser = {
-          uid: cred.user.uid,
-          email: cred.user.email || cleanEmail,
-          role: cleanEmail.includes('super') ? 'super_admin' : 'admin',
+          uid: userUid,
+          email: cleanEmail,
+          role: role,
           name: cleanEmail.split('@')[0] || 'Admin'
         };
         setCurrentUser(adminData);
         localStorage.setItem(LOCAL_ADMIN_KEY, JSON.stringify(adminData));
+        await seedAdminUserDocument(userUid, cleanEmail, role);
         setIsLoading(false);
         return;
       }
     } catch (e: any) {
-      console.warn('Firebase login attempt fallback to seed admin:', e.message);
+      console.warn('[SIXATE] Firebase Auth login notice:', e.message);
     }
 
     // Check custom updated password or seed fallback
