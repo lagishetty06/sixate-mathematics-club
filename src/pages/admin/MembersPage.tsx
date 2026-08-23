@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
 import { fetchAllApplications, subscribeToApplications } from '../../lib/firebase';
 import { StudentApplication } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import { exportStudentsToExcel, exportStudentsToCSV, formatDateTime } from '../../lib/exportEngine';
 import { StudentDetailModal } from '../../components/admin/StudentDetailModal';
 import { 
@@ -22,7 +23,15 @@ export const MembersPage: React.FC = () => {
   const [selectedStudent, setSelectedStudent] = useState<StudentApplication | null>(null);
   const [exportToast, setExportToast] = useState<string | null>(null);
 
+  const { currentUser, isLoading: authLoading } = useAuth();
+
   useEffect(() => {
+    if (authLoading) return;
+    if (!currentUser) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     const unsubscribe = subscribeToApplications((data) => {
       setApplications(data);
@@ -32,7 +41,7 @@ export const MembersPage: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [authLoading, currentUser]);
 
   const loadData = async () => {
     setIsLoading(true);

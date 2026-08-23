@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
 import { fetchAllApplications, subscribeToApplications } from '../../lib/firebase';
 import { StudentApplication, ApplicationFilterState } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import { exportStudentsToExcel, exportStudentsToCSV, formatDateTime } from '../../lib/exportEngine';
 import { StudentDetailModal } from '../../components/admin/StudentDetailModal';
 import { 
@@ -40,7 +41,15 @@ export const StudentsPage: React.FC = () => {
     interest: 'All'
   });
 
+  const { currentUser, isLoading: authLoading } = useAuth();
+
   useEffect(() => {
+    if (authLoading) return;
+    if (!currentUser) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setDbError(null);
     const unsubscribe = subscribeToApplications(
@@ -58,7 +67,7 @@ export const StudentsPage: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [authLoading, currentUser]);
 
   const loadData = async () => {
     setIsLoading(true);

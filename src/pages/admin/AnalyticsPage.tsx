@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
 import { fetchAllApplications, subscribeToApplications } from '../../lib/firebase';
 import { StudentApplication } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import { 
   BarChart, 
   Bar, 
@@ -24,7 +25,15 @@ export const AnalyticsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [exportToast, setExportToast] = useState<string | null>(null);
 
+  const { currentUser, isLoading: authLoading } = useAuth();
+
   useEffect(() => {
+    if (authLoading) return;
+    if (!currentUser) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     const unsubscribe = subscribeToApplications((data) => {
       setApplications(data);
@@ -34,7 +43,7 @@ export const AnalyticsPage: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [authLoading, currentUser]);
 
   const loadData = async () => {
     setIsLoading(true);
