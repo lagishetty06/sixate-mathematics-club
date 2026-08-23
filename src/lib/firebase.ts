@@ -312,12 +312,15 @@ export async function updateApplicationStatusInDb(
     assignedMemberId = `SIXATE-M-${paddedSeq}`;
   }
 
-  const newHistoryEntry = {
+  const newHistoryEntry: any = {
     status: newStatus,
     changedBy: adminEmail,
-    timestamp: nowIso,
-    notes: notes || undefined
+    timestamp: nowIso
   };
+  
+  if (notes && notes.trim() !== '') {
+    newHistoryEntry.notes = notes.trim();
+  }
 
   const updatedData: StudentApplication = {
     ...currentData,

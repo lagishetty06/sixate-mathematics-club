@@ -17,7 +17,8 @@ import {
   ShieldCheck,
   Star,
   ExternalLink,
-  History
+  History,
+  AlertCircle
 } from 'lucide-react';
 
 interface StudentDetailModalProps {
@@ -45,17 +46,23 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({ student,
     if (!confirmStatus) return;
     setIsUpdating(true);
     setModalError(null);
+    console.log(`[SIXATE] Confirm status change clicked`);
+    console.log(`[SIXATE] Application ID: ${student.id}`);
+    console.log(`[SIXATE] New status: ${confirmStatus}`);
     try {
+      console.log(`[SIXATE] Updating Firestore...`);
       const updated = await updateApplicationStatusInDb(
         student.id, 
         confirmStatus, 
         currentUser?.email || 'admin@sixate.edu',
         actionNotes
       );
+      console.log(`[SIXATE] Status updated successfully`);
       onUpdate(updated);
       setConfirmStatus(null);
-    } catch (err) {
-      setModalError('Failed to update status. Please try again.');
+    } catch (err: any) {
+      console.error(`[SIXATE] Status update failed:`, err);
+      setModalError(err.message || 'Failed to update status. Please try again.');
     } finally {
       setIsUpdating(false);
     }
@@ -288,6 +295,13 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({ student,
               Are you sure you want to change <strong className="text-white">{student.fullName}</strong>'s status to{' '}
               <strong className="text-sixate-green uppercase">{confirmStatus}</strong>?
             </p>
+
+            {modalError && (
+              <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs font-medium flex items-center gap-2.5">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{modalError}</span>
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-[11px] font-semibold text-slate-400">Optional Audit Note</label>
