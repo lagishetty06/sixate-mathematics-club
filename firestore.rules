@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isSuperAdmin() {
+      return isAdmin() && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "super_admin";
+    }
+
+    // Applications collection (Public create-only with deterministic Roll Number docId, Private read/update)
+    match /applications/{docId} {
+      allow create: if request.resource.data.rollNumber == docId
+                    && request.resource.data.status == "pending"
+                    && (!("memberId" in request.resource.data) || request.resource.data.memberId == null)
+                    && request.resource.data.fullName is string
+                    && request.resource.data.email is string;
+      allow read, update: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // Email Index collection (Enforces email uniqueness on creation without exposing email list)
+    match /emailIndex/{email} {
+      allow create: if !exists(/databases/$(database)/documents/emailIndex/$(email));
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // Counters collection (Sequential Application & Member ID counters)
+    match /counters/{counterName} {
+      allow read: if isAdmin();
+      allow update: if request.resource.data.count == resource.data.count + 1;
+      allow create: if request.resource.data.count == 1;
+    }
+
+    // Admins collection
+    match /admins/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow write: if isSuperAdmin();
+    }
+  }
+}
