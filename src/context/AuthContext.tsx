@@ -62,19 +62,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     const cleanEmail = email.trim().toLowerCase();
     
-    // Try Firebase Auth login or register
+    // Try Firebase Auth login, or auto-register on first use
     try {
       let userUid: string | null = null;
       try {
+        console.log('[SIXATE] Attempting Firebase signInWithEmailAndPassword for:', cleanEmail);
         const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
         userUid = cred.user.uid;
+        console.log('[SIXATE] Firebase sign-in SUCCESS. UID:', userUid);
       } catch (err: any) {
-        // If account doesn't exist yet, create account in Firebase Auth
-        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        console.warn('[SIXATE] signIn failed, code:', err.code, 'message:', err.message);
+        // Firebase v9+ uses 'auth/invalid-credential' when user doesn't exist
+        const notFound = err.code === 'auth/user-not-found'
+          || err.code === 'auth/invalid-credential'
+          || err.code === 'auth/invalid-email';
+        if (notFound) {
+          console.log('[SIXATE] User not found — creating account in Firebase Auth...');
           const newCred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
           userUid = newCred.user.uid;
+          console.log('[SIXATE] Firebase createUser SUCCESS. UID:', userUid);
         } else {
-          throw err;
+          // Wrong password or other real error — do NOT fall through to localStorage
+          setIsLoading(false);
+          throw new Error('Firebase Auth error: ' + (err.message || err.code));
         }
       }
 
@@ -93,7 +103,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
     } catch (e: any) {
-      console.warn('[SIXATE] Firebase Auth login notice:', e.message);
+      // Only reach here if createUserWithEmailAndPassword also failed
+      console.error('[SIXATE] Firebase Auth FAILED entirely:', e.code, e.message);
+      setIsLoading(false);
+      throw new Error(e.message || 'Authentication failed. Please try again.');
     }
 
     // Check custom updated password or seed fallback
