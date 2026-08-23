@@ -73,12 +73,16 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
   const normEmail = payload.email.trim().toLowerCase();
   const nowIso = new Date().toISOString();
 
+  console.log('[SIXATE] Registration submission started');
+  console.log('[SIXATE] Writing to Firestore applications...');
+
   try {
     // 1. Check duplicate roll number document in Firestore
     const rollDocRef = doc(db, 'applications', normRoll);
     const rollSnap = await getDoc(rollDocRef);
     if (rollSnap.exists()) {
       const existingData = rollSnap.data();
+      console.warn('[SIXATE] Duplicate roll number detected in Firestore');
       throw { isDuplicate: true, applicationId: existingData.applicationId || 'EXISTING' };
     }
 
@@ -88,6 +92,7 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
       const emailSnap = await getDoc(emailDocRef);
       if (emailSnap.exists()) {
         const existingData = emailSnap.data();
+        console.warn('[SIXATE] Duplicate email detected in Firestore');
         throw { isDuplicate: true, applicationId: existingData.applicationId || 'EXISTING' };
       }
     }
@@ -151,17 +156,16 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
       await setDoc(doc(db, 'emailIndex', normEmail), { applicationId: formattedAppId, rollNumber: normRoll, email: normEmail });
     }
 
+    console.log('[SIXATE] Firestore write successful');
+    console.log('[SIXATE] Document ID:', normRoll);
+    console.log('[SIXATE] Application ID:', formattedAppId);
+
     return { applicationId: formattedAppId, docId: normRoll };
   } catch (err: any) {
     if (err.isDuplicate) {
       throw err;
     }
-    console.error('Firestore Registration Error:', {
-      code: err.code || 'UNKNOWN_ERROR',
-      message: err.message || String(err),
-      operation: 'setDoc applications',
-      environment: import.meta.env.MODE
-    });
+    console.error('[SIXATE] Firestore error Code:', err.code || 'UNKNOWN_ERROR', 'Message:', err.message || String(err));
     throw new Error('Registration could not be submitted. Please try again.');
   }
 }
@@ -175,20 +179,19 @@ export function subscribeToApplications(
   onError?: (err: Error) => void
 ): () => void {
   try {
+    console.log('[SIXATE] Loading applications...');
+    console.log('[SIXATE] Firebase project:', db.app.options.projectId);
+
     const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
         const apps = snapshot.docs.map(doc => doc.data() as StudentApplication);
+        console.log('[SIXATE] Applications found:', apps.length);
         onData(apps);
       },
       (err: FirestoreError) => {
-        console.error('Firestore onSnapshot Error:', {
-          code: err.code,
-          message: err.message,
-          operation: 'onSnapshot applications',
-          environment: import.meta.env.MODE
-        });
+        console.error('[SIXATE] Firestore error Code:', err.code, 'Message:', err.message);
         if (onError) {
           onError(err);
         }
@@ -196,7 +199,7 @@ export function subscribeToApplications(
     );
     return unsubscribe;
   } catch (err: any) {
-    console.error('Firestore Subscription Exception:', err);
+    console.error('[SIXATE] Firestore Subscription Exception:', err);
     if (onError) {
       onError(err);
     }
@@ -206,16 +209,16 @@ export function subscribeToApplications(
 
 export async function fetchAllApplications(): Promise<StudentApplication[]> {
   try {
+    console.log('[SIXATE] Loading applications...');
+    console.log('[SIXATE] Firebase project:', db.app.options.projectId);
+
     const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => doc.data() as StudentApplication);
+    const apps = snapshot.docs.map(doc => doc.data() as StudentApplication);
+    console.log('[SIXATE] Applications found:', apps.length);
+    return apps;
   } catch (err: any) {
-    console.error('Firestore fetchAllApplications Error:', {
-      code: err.code || 'UNKNOWN_ERROR',
-      message: err.message || String(err),
-      operation: 'getDocs applications',
-      environment: import.meta.env.MODE
-    });
+    console.error('[SIXATE] Firestore error Code:', err.code || 'UNKNOWN_ERROR', 'Message:', err.message || String(err));
     throw err;
   }
 }
