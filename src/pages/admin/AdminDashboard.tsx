@@ -25,6 +25,21 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    const handleUpdate = () => loadData();
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('focus', handleUpdate);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('sixate_registration_channel');
+      bc.onmessage = () => loadData();
+    } catch (e) {}
+
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('focus', handleUpdate);
+      if (bc) bc.close();
+    };
   }, []);
 
   const loadData = async () => {

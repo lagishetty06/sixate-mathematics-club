@@ -223,105 +223,14 @@ export interface RegistrationPayload {
 export async function submitRegistration(payload: RegistrationPayload): Promise<{ applicationId: string; docId: string }> {
   const normRoll = payload.rollNumber.trim().toLowerCase();
   const normEmail = payload.email.trim().toLowerCase();
+  const nowIso = new Date().toISOString();
 
-  // Try real Firestore write first if configured
-  try {
-    const isFirebaseActive = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.startsWith("AIzaSyDummy") ? false : true;
-
-    if (isFirebaseActive) {
-      // 1. Check duplicate roll number doc
-      const rollDocRef = doc(db, 'applications', normRoll);
-      const rollSnap = await getDoc(rollDocRef);
-      if (rollSnap.exists()) {
-        const existingData = rollSnap.data();
-        throw { isDuplicate: true, applicationId: existingData.applicationId || 'EXISTING' };
-      }
-
-      // 2. Check duplicate email index (if email provided)
-      if (normEmail && normEmail !== '') {
-        const emailDocRef = doc(db, 'emailIndex', normEmail);
-        const emailSnap = await getDoc(emailDocRef);
-        if (emailSnap.exists()) {
-          const existingData = emailSnap.data();
-          throw { isDuplicate: true, applicationId: existingData.applicationId || 'EXISTING' };
-        }
-      }
-
-      // 3. Increment counter atomically
-      const counterRef = doc(db, 'counters', 'applications');
-      let appSeq = 1;
-      await runTransaction(db, async (transaction) => {
-        const counterSnap = await transaction.get(counterRef);
-        if (!counterSnap.exists()) {
-          transaction.set(counterRef, { count: 1 });
-          appSeq = 1;
-        } else {
-          appSeq = (counterSnap.data().count || 0) + 1;
-          transaction.update(counterRef, { count: appSeq });
-        }
-      });
-
-      const paddedSeq = String(appSeq).padStart(5, '0');
-      const formattedAppId = `SIXATE-2026-${paddedSeq}`;
-      const nowIso = new Date().toISOString();
-
-      const newAppData: StudentApplication = {
-        id: normRoll,
-        applicationId: formattedAppId,
-        fullName: payload.fullName.trim(),
-        rollNumberDisplay: payload.rollNumber.trim(),
-        emailDisplay: payload.email.trim(),
-        email: normEmail,
-        rollNumber: normRoll,
-        phone: payload.phone.trim(),
-        gender: payload.gender,
-        department: payload.department,
-        departmentOther: payload.departmentOther,
-        year: payload.year,
-        section: payload.section?.trim(),
-        interests: payload.interests,
-        interestsOther: payload.interestsOther,
-        mathInterestRating: payload.mathInterestRating,
-        skills: payload.skills,
-        skillsOther: payload.skillsOther,
-        competitionExperience: payload.competitionExperience,
-        achievements: payload.achievements?.trim(),
-        reasonForJoining: payload.reasonForJoining.trim(),
-        contribution: payload.contribution?.trim(),
-        preferredActivities: payload.preferredActivities,
-        linkedin: payload.linkedin?.trim(),
-        github: payload.github?.trim(),
-        profilePhotoUrl: payload.profilePhotoUrl,
-        status: 'pending',
-        statusHistory: [{ status: 'pending', changedBy: 'System', timestamp: nowIso }],
-        createdAt: nowIso
-      };
-
-      // Write application and email index doc if email provided
-      await setDoc(rollDocRef, newAppData);
-      if (normEmail && normEmail !== '') {
-        await setDoc(doc(db, 'emailIndex', normEmail), { applicationId: formattedAppId, rollNumber: normRoll, email: normEmail });
-      }
-
-      return { applicationId: formattedAppId, docId: normRoll };
-    }
-  } catch (err: any) {
-    if (err.isDuplicate) {
-      throw err;
-    }
-    console.warn('Firebase submission notice (using client storage sync):', err);
-  }
-
-  // FALLBACK CLIENT SYNC (Guarantees local functionality & demo testing)
+  // 1. Check local duplicate roll number & email
   const currentApps = getStoredApps();
-  
-  // Check roll number duplicate
   const existingRoll = currentApps.find(a => a.rollNumber === normRoll);
   if (existingRoll) {
     throw { isDuplicate: true, applicationId: existingRoll.applicationId };
   }
-
-  // Check email duplicate if email provided
   if (normEmail && normEmail !== '') {
     const existingEmail = currentApps.find(a => a.email === normEmail);
     if (existingEmail) {
@@ -332,7 +241,6 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
   const nextSeq = getNextCounterValue('applications');
   const paddedSeq = String(nextSeq).padStart(5, '0');
   const formattedAppId = `SIXATE-2026-${paddedSeq}`;
-  const nowIso = new Date().toISOString();
 
   const newAppData: StudentApplication = {
     id: normRoll,
@@ -366,8 +274,32 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
     createdAt: nowIso
   };
 
+  // Always save submission to local storage store so it appears in admin lists immediately
   currentApps.unshift(newAppData);
   saveStoredApps(currentApps);
+
+  // Broadcast registration event across open admin browser tabs/windows
+  try {
+    const bc = new BroadcastChannel('sixate_registration_channel');
+    bc.postMessage({ type: 'NEW_REGISTRATION', application: newAppData });
+    bc.close();
+  } catch (e) {
+    // Ignore BroadcastChannel errors on older browsers
+  }
+
+  // Attempt real Firestore write if active
+  try {
+    const isFirebaseActive = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.startsWith("AIzaSyDummy") ? false : true;
+    if (isFirebaseActive) {
+      const rollDocRef = doc(db, 'applications', normRoll);
+      await setDoc(rollDocRef, newAppData);
+      if (normEmail && normEmail !== '') {
+        await setDoc(doc(db, 'emailIndex', normEmail), { applicationId: formattedAppId, rollNumber: normRoll, email: normEmail });
+      }
+    }
+  } catch (err: any) {
+    console.warn('Firestore submission notice (stored in hybrid local session):', err);
+  }
 
   return { applicationId: formattedAppId, docId: normRoll };
 }
@@ -377,20 +309,30 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
 // ----------------------------------------------------
 
 export async function fetchAllApplications(): Promise<StudentApplication[]> {
+  const localApps = getStoredApps();
+
   try {
     const isFirebaseActive = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.startsWith("AIzaSyDummy") ? false : true;
     if (isFirebaseActive) {
       const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
-        return snapshot.docs.map(doc => doc.data() as StudentApplication);
+        const firestoreApps = snapshot.docs.map(doc => doc.data() as StudentApplication);
+        const appMap = new Map<string, StudentApplication>();
+        firestoreApps.forEach(app => appMap.set(app.id || app.rollNumber, app));
+        localApps.forEach(app => {
+          if (!appMap.has(app.id || app.rollNumber)) {
+            appMap.set(app.id || app.rollNumber, app);
+          }
+        });
+        return Array.from(appMap.values());
       }
     }
   } catch (e) {
     console.warn('Firestore fetch notice (using local store):', e);
   }
 
-  return getStoredApps();
+  return localApps;
 }
 
 export async function updateApplicationStatusInDb(
