@@ -17,14 +17,14 @@ import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import { StudentApplication, ApplicationStatus } from '../types';
 
-// Environment / Public Firebase Config
+// Environment / Public Firebase Config (sixate-math-club-2026)
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDummySixateApiKeyForFallbackMode",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCqDltrqhLLGnA3TCu5EYUIfchmwqPEazI",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "sixate-math-club-2026.firebaseapp.com",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "sixate-math-club-2026",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sixate-math-club-2026.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "102938475612",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:102938475612:web:abcdef1234567890"
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sixate-math-club-2026.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "264304199447",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:264304199447:web:2d4cf33216d125ab7e1952"
 };
 
 // Initialize Firebase App & Services
