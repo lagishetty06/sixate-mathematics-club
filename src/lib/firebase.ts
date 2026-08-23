@@ -124,8 +124,8 @@ export async function submitRegistration(payload: RegistrationPayload): Promise<
       }
     });
   } catch (err: any) {
-    console.warn('[SIXATE] Counter transaction notice (falling back to sequence ID):', err?.message || String(err));
-    appSeq = (Date.now() % 90000) + 10000;
+    console.warn('[SIXATE] Counter transaction notice (falling back to random sequence ID):', err?.message || String(err));
+    appSeq = Math.floor(Math.random() * 90000) + 10000;
   }
 
   const paddedSeq = String(appSeq).padStart(5, '0');
@@ -306,7 +306,7 @@ export async function updateApplicationStatusInDb(
       });
     } catch (err: any) {
       console.warn('[SIXATE] Member counter transaction failed, using fallback:', err?.message);
-      memberSeq = Date.now() % 9000 + 1000;
+      memberSeq = Math.floor(Math.random() * 9000) + 1000;
     }
     const paddedSeq = String(memberSeq).padStart(4, '0');
     assignedMemberId = `SIXATE-M-${paddedSeq}`;
