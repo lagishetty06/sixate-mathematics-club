@@ -9,8 +9,8 @@ export const AdminLoginPage: React.FC = () => {
   const { isAuthenticated, login } = useAuth();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState('admin@sixate.edu');
-  const [password, setPassword] = useState('sixate2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
