@@ -210,16 +210,22 @@ export function subscribeToApplications(
   onError?: (err: Error) => void
 ): () => void {
   try {
-    const user = auth.currentUser;
     console.log('[SIXATE] Loading applications...');
     console.log('[SIXATE] Firebase project:', db.app.options.projectId);
-    console.log('[SIXATE] Auth Current User:', user ? { uid: user.uid, email: user.email } : null);
 
-    const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
+    // No orderBy — avoids needing a composite index. Sort client-side.
+    const q = query(collection(db, 'applications'));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const apps = snapshot.docs.map(doc => doc.data() as StudentApplication);
+        const apps = snapshot.docs
+          .map(doc => doc.data() as StudentApplication)
+          .sort((a, b) => {
+            // Sort by createdAt descending
+            const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return bTime - aTime;
+          });
         console.log('[SIXATE] Applications found:', apps.length);
         onData(apps);
       },
@@ -242,14 +248,19 @@ export function subscribeToApplications(
 
 export async function fetchAllApplications(): Promise<StudentApplication[]> {
   try {
-    const user = auth.currentUser;
     console.log('[SIXATE] Loading applications...');
     console.log('[SIXATE] Firebase project:', db.app.options.projectId);
-    console.log('[SIXATE] Auth Current User:', user ? { uid: user.uid, email: user.email } : null);
 
-    const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
+    // No orderBy — avoids needing a composite index. Sort client-side.
+    const q = query(collection(db, 'applications'));
     const snapshot = await getDocs(q);
-    const apps = snapshot.docs.map(doc => doc.data() as StudentApplication);
+    const apps = snapshot.docs
+      .map(doc => doc.data() as StudentApplication)
+      .sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTime - aTime;
+      });
     console.log('[SIXATE] Applications found:', apps.length);
     return apps;
   } catch (err: any) {
