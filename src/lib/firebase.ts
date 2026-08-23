@@ -31,12 +31,13 @@ export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// LOCAL STORAGE FALLBACK SEED DATA (Used when Firebase keys are default/offline or for instant demoing)
-const STORAGE_KEY_APPS = 'sixate_applications_db_v1';
-const STORAGE_KEY_COUNTERS = 'sixate_counters_db_v1';
-const STORAGE_KEY_ADMINS = 'sixate_admins_db_v1';
+// LOCAL STORAGE STORAGE KEYS & AUTOMATIC MOCK PURGE
+const STORAGE_KEY_APPS = 'sixate_applications_db_v2';
+const STORAGE_KEY_COUNTERS = 'sixate_counters_db_v2';
+const STORAGE_KEY_ADMINS = 'sixate_admins_db_v2';
 
-const INITIAL_MOCK_STUDENTS: StudentApplication[] = [];
+const MOCK_IDS = new Set(['22a01cse', '23a04aiml', '24a08ece', '21a02eee', 'SIXATE-2026-00001', 'SIXATE-2026-00002', 'SIXATE-2026-00003', 'SIXATE-2026-00004']);
+const MOCK_NAMES = new Set(['Aarav Sharma', 'Ananya Verma', 'Rohan Kulkarni', 'Priya Sundaram']);
 
 function getStoredApps(): StudentApplication[] {
   try {
@@ -45,7 +46,18 @@ function getStoredApps(): StudentApplication[] {
       localStorage.setItem(STORAGE_KEY_APPS, JSON.stringify([]));
       return [];
     }
-    return JSON.parse(data);
+    const parsed: StudentApplication[] = JSON.parse(data);
+    // Purge any lingering mock data automatically
+    const cleaned = parsed.filter(app => 
+      !MOCK_IDS.has(app.id) && 
+      !MOCK_IDS.has(app.rollNumber) && 
+      !MOCK_IDS.has(app.applicationId) && 
+      !MOCK_NAMES.has(app.fullName)
+    );
+    if (cleaned.length !== parsed.length) {
+      localStorage.setItem(STORAGE_KEY_APPS, JSON.stringify(cleaned));
+    }
+    return cleaned;
   } catch (e) {
     return [];
   }
