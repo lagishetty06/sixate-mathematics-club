@@ -19,22 +19,15 @@ import {
   RefreshCw
 } from 'lucide-react';
 
-import { useAuth } from '../../context/AuthContext';
+
 
 export const AdminDashboard: React.FC = () => {
-  const { currentUser, isLoading: authLoading } = useAuth();
   const [applications, setApplications] = useState<StudentApplication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<StudentApplication | null>(null);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!currentUser) {
-      setIsLoading(false);
-      return;
-    }
-
     setIsLoading(true);
     setDbError(null);
     const unsubscribe = subscribeToApplications(
@@ -52,7 +45,7 @@ export const AdminDashboard: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, [authLoading, currentUser]);
+  }, []);
 
   const loadData = async () => {
     setIsLoading(true);
