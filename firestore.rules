@@ -3,40 +3,54 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Applications — public read (Admin Dashboard reads without login),
-    // restricted create (student form only), open update for status changes,
-    // no delete allowed.
+    // ── Applications ──────────────────────────────────────────────────────────
+    // Public read (Admin Dashboard has no login — known architectural limitation).
+    // Restricted create: roll number must match document ID, status must be "pending".
+    // Restricted update: only status-related fields may be changed.
+    // Delete is always blocked.
     match /applications/{docId} {
       allow read: if true;
 
       allow create: if request.resource.data.rollNumber == docId
                     && request.resource.data.status == "pending"
-                    && (!("memberId" in request.resource.data) || request.resource.data.memberId == null)
+                    && !(("memberId" in request.resource.data) && request.resource.data.memberId != null)
                     && request.resource.data.fullName is string
                     && request.resource.data.email is string;
 
-      allow update: if true;
+      // Only allow updating the status, memberId, and statusHistory fields.
+      // This prevents arbitrary field modifications from the browser.
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['status', 'memberId', 'statusHistory']);
+
       allow delete: if false;
     }
 
-    // Email Index — public read and create (duplicate-check), no modifications.
+    // ── Email Index ───────────────────────────────────────────────────────────
+    // Public read (duplicate-check during registration).
+    // Create only — prevents overwrite of existing email entries.
+    // No update or delete.
     match /emailIndex/{email} {
       allow create: if !exists(/databases/$(database)/documents/emailIndex/$(email));
-      allow read: if true;
+      allow read:   if true;
       allow update, delete: if false;
     }
 
-    // Counters — public get AND create for sequential ID generation.
-    // Create is needed to initialise counter docs the first time.
+    // ── Counters ─────────────────────────────────────────────────────────────
+    // Sequential ID generation and analytics aggregation require read + write.
+    // List is blocked to prevent enumeration of counter names.
+    // Deletes are blocked.
+    // NOTE: Without Firebase Auth, clients can still read/write these counters.
+    // This is an inherent limitation of the no-auth architecture.
     match /counters/{counterName} {
-      allow get: if true;
-      allow list: if false;
+      allow get:    if true;
+      allow list:   if false;
       allow create: if true;
       allow update: if true;
       allow delete: if false;
     }
 
-    // Admins collection — fully locked (no login system used).
+    // ── Admins Collection ─────────────────────────────────────────────────────
+    // Fully locked. Admin is a UI-level concept only (no Firebase Auth).
     match /admins/{uid} {
       allow read, write: if false;
     }

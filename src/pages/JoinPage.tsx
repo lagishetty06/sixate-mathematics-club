@@ -1,24 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { SixateLogo } from '../components/common/SixateLogo';
 import { MathBackground } from '../components/common/MathBackground';
 import { submitRegistration, RegistrationPayload } from '../lib/firebase';
-import { 
-  User, 
-  BookOpen, 
-  Compass, 
-  Wrench, 
-  Trophy, 
-  FileText, 
-  Link as LinkIcon, 
-  CheckSquare, 
-  ArrowRight, 
-  ArrowLeft, 
-  Upload, 
-  Check, 
+import {
+  User,
+  BookOpen,
+  Compass,
+  Wrench,
+  Trophy,
+  FileText,
+  Link as LinkIcon,
+  CheckSquare,
+  ArrowRight,
+  ArrowLeft,
+  Upload,
+  Check,
   AlertTriangle,
   Star,
-  X
+  X,
+  Loader2,
 } from 'lucide-react';
 
 export const JoinPage: React.FC = () => {
@@ -27,6 +28,8 @@ export const JoinPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateError, setDuplicateError] = useState<{ isDuplicate: boolean; applicationId: string } | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null);
+  // Ref-level guard: prevents any concurrent duplicate submission even if React state lags
+  const isSubmittingRef = useRef(false);
 
   // Form State
   const [formData, setFormData] = useState<RegistrationPayload>({
@@ -59,7 +62,7 @@ export const JoinPage: React.FC = () => {
   const [agreeContact, setAgreeContact] = useState(true);
 
   // Field Options Definitions
-  const departments = ['CSE', 'CSE (AI & ML)', 'CSE (Data Science)', 'ECE', 'EEE', 'Mechanical', 'Civil', 'Other'];
+  const departments = ['CSE', 'CSE (AI & ML)', 'CSE (Data Science)', 'IT', 'ECE', 'EEE', 'Mechanical', 'Civil', 'Other'];
   const years: ('1st Year' | '2nd Year' | '3rd Year' | '4th Year')[] = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
   const mathInterestsList = [
     'Algebra', 'Calculus', 'Geometry', 'Statistics', 'Probability', 
@@ -168,24 +171,30 @@ export const JoinPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Hard guard: prevents any concurrent/double submission
+    if (isSubmittingRef.current) return;
+
     if (!confirmCorrect) {
       setGeneralError('You must confirm that the information provided is correct.');
       return;
     }
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     setGeneralError(null);
 
     try {
       const result = await submitRegistration(formData);
-      navigate('/join/success', { 
-        state: { 
-          applicationId: result.applicationId, 
-          fullName: formData.fullName, 
-          email: formData.email 
-        } 
+      navigate('/join/success', {
+        state: {
+          applicationId: result.applicationId,
+          fullName:      formData.fullName,
+          email:         formData.email,
+        },
       });
     } catch (err: any) {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
       if (err && err.isDuplicate) {
         setDuplicateError({ isDuplicate: true, applicationId: err.applicationId || 'SIXATE-2026-REG' });
@@ -870,9 +879,17 @@ export const JoinPage: React.FC = () => {
                   type="button"
                   onClick={handleSubmit}
                   disabled={isSubmitting || !confirmCorrect}
-                  className="px-8 py-3.5 rounded-xl font-heading font-bold text-sm text-white bg-gradient-to-r from-sixate-violet via-sixate-purple to-sixate-green shadow-xl shadow-sixate-green/30 hover:scale-[1.02] disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2 ml-auto"
+                  aria-busy={isSubmitting}
+                  className="px-8 py-3.5 rounded-xl font-heading font-bold text-sm text-white bg-gradient-to-r from-sixate-violet via-sixate-purple to-sixate-green shadow-xl shadow-sixate-green/30 hover:scale-[1.02] disabled:opacity-60 disabled:pointer-events-none disabled:cursor-not-allowed flex items-center gap-2 ml-auto transition-all"
                 >
-                  {isSubmitting ? 'SUBMITTING REGISTRATION...' : 'JOIN SIXATE →'}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      SUBMITTING APPLICATION…
+                    </>
+                  ) : (
+                    'JOIN SIXATE →'
+                  )}
                 </button>
               )}
             </div>
