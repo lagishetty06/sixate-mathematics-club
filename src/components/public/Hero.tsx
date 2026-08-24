@@ -12,7 +12,7 @@ export const Hero: React.FC = () => {
   };
 
   return (
-    <section className="relative pt-32 pb-20 md:pt-44 md:pb-32 overflow-hidden">
+    <section className="relative pt-20 sm:pt-24 md:pt-28 pb-20 md:pb-32 overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         
         <div className="text-center max-w-4xl mx-auto space-y-6">
