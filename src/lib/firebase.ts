@@ -359,7 +359,7 @@ export async function getStatusCounts(): Promise<{
     const analyticsSnap = await getDoc(doc(db, 'counters', 'analytics'));
     if (analyticsSnap.exists()) {
       const d = analyticsSnap.data();
-      if (typeof d.total === 'number') {
+      if (typeof d.total === 'number' && d.total > 0) {
         return {
           total:       d.total       ?? 0,
           pending:     d.pending     ?? 0,

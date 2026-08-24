@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { AdminSidebar } from '../../components/admin/AdminSidebar';
 import {
-  getAnalyticsData,
-  getStatusCounts,
   fetchAllApplicationsForExport,
+  db,
 } from '../../lib/firebase';
 import { StudentApplication } from '../../types';
+import { doc, setDoc } from 'firebase/firestore';
 
 import {
   BarChart,
@@ -37,47 +37,57 @@ import {
 
 const COLORS = ['#6D28D9', '#7C3AED', '#10B981', '#06B6D4', '#F59E0B', '#EC4899', '#3B82F6', '#8B5CF6'];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AnalyticsPage
-//
-// Data strategy:
-//  - Status counts  → getStatusCounts()  reads counters/analytics (1 read)
-//  - Dept/Year/Interest distributions → getAnalyticsData() reads counters/analytics (1 read)
-//  - Timeline data  → requires full export (explicitly requested only)
-//  - Export         → fetchAllApplicationsForExport() (intentional — admin action)
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const AnalyticsPage: React.FC = () => {
-  const [analyticsData, setAnalyticsData]   = useState<Record<string, number>>({});
-  const [isLoading, setIsLoading]           = useState(true);
-  const [dbError, setDbError]               = useState<string | null>(null);
-  const [exportToast, setExportToast]       = useState<string | null>(null);
-  const [isExporting, setIsExporting]       = useState(false);
+  const [applications, setApplications] = useState<StudentApplication[]>([]);
+  const [isLoading, setIsLoading]       = useState(true);
+  const [dbError, setDbError]           = useState<string | null>(null);
+  const [exportToast, setExportToast]   = useState<string | null>(null);
+  const [isExporting, setIsExporting]   = useState(false);
 
-  // Full dataset only loaded when admin explicitly requests timeline/export
-  const [fullData, setFullData]             = useState<StudentApplication[] | null>(null);
-  const [isLoadingFull, setIsLoadingFull]   = useState(false);
-
-  // ── Load analytics from counters/analytics (1 read) ───────────────────────
+  // ── Load live applications & calculate analytics dynamically ─────────────
   const loadAnalytics = useCallback(async () => {
     setIsLoading(true);
     setDbError(null);
     try {
-      const [analytics, counts] = await Promise.all([
-        getAnalyticsData(),
-        getStatusCounts(),
-      ]);
-      // Merge status counts into analytics data
-      setAnalyticsData({
-        ...analytics,
-        total:       counts.total,
-        pending:     counts.pending,
-        approved:    counts.approved,
-        shortlisted: counts.shortlisted,
-        rejected:    counts.rejected,
-      });
+      const data = await fetchAllApplicationsForExport();
+      setApplications(data);
+
+      // Best-effort: sync analytics counter document in Firestore
+      try {
+        const counts: Record<string, number> = {
+          total:       data.length,
+          pending:     0,
+          approved:    0,
+          shortlisted: 0,
+          rejected:    0,
+        };
+
+        data.forEach((app) => {
+          // Status
+          const st = app.status || 'pending';
+          counts[st] = (counts[st] || 0) + 1;
+
+          // Department
+          const normDept = (app.department || 'Other').replace(/[^a-zA-Z0-9]/g, '_');
+          counts[`dept_${normDept}`] = (counts[`dept_${normDept}`] || 0) + 1;
+
+          // Year
+          const normYear = (app.year || '1st Year').replace(/[^a-zA-Z0-9]/g, '_');
+          counts[`year_${normYear}`] = (counts[`year_${normYear}`] || 0) + 1;
+
+          // Interests
+          (app.interests || []).forEach((interest) => {
+            const key = `interest_${interest.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            counts[key] = (counts[key] || 0) + 1;
+          });
+        });
+
+        await setDoc(doc(db, 'counters', 'analytics'), counts, { merge: true });
+      } catch (syncErr) {
+        console.warn('[SIXATE] Analytics doc sync notice:', syncErr);
+      }
     } catch (err: any) {
-      setDbError(err.message || 'Unable to load analytics data.');
+      setDbError(err.message || 'Unable to load student registration data.');
     } finally {
       setIsLoading(false);
     }
@@ -87,65 +97,66 @@ export const AnalyticsPage: React.FC = () => {
     loadAnalytics();
   }, [loadAnalytics]);
 
-  // ── Load full dataset for timeline chart (admin-initiated only) ────────────
-  const handleLoadTimeline = async () => {
-    setIsLoadingFull(true);
-    try {
-      const data = await fetchAllApplicationsForExport();
-      setFullData(data);
-    } catch (err: any) {
-      setDbError('Failed to load timeline data: ' + (err.message || ''));
-    } finally {
-      setIsLoadingFull(false);
-    }
-  };
+  // ── Derive Status Counts ──────────────────────────────────────────────────
+  const statusCounts = useMemo(() => {
+    let pending = 0, approved = 0, shortlisted = 0, rejected = 0;
+    applications.forEach((app) => {
+      if (app.status === 'approved') approved++;
+      else if (app.status === 'shortlisted') shortlisted++;
+      else if (app.status === 'rejected') rejected++;
+      else pending++;
+    });
+    return { total: applications.length, pending, approved, shortlisted, rejected };
+  }, [applications]);
 
-  // ── Derive chart data from counters/analytics document ────────────────────
-
-  // Year chart — keys are year_1st_Year, year_2nd_Year, etc.
+  // ── Derive Year Chart Data ────────────────────────────────────────────────
   const yearData = useMemo(() => {
-    const yearKeys: Record<string, string> = {
-      'year_1st_Year': '1st Year',
-      'year_2nd_Year': '2nd Year',
-      'year_3rd_Year': '3rd Year',
-      'year_4th_Year': '4th Year',
+    const counts: Record<string, number> = {
+      '1st Year': 0,
+      '2nd Year': 0,
+      '3rd Year': 0,
+      '4th Year': 0,
     };
-    return Object.entries(yearKeys).map(([key, label]) => ({
-      year:  label,
-      count: analyticsData[key] ?? 0,
-    }));
-  }, [analyticsData]);
+    applications.forEach((app) => {
+      if (app.year && counts[app.year] !== undefined) {
+        counts[app.year]++;
+      }
+    });
+    return Object.entries(counts).map(([year, count]) => ({ year, count }));
+  }, [applications]);
 
-  // Department chart — keys are dept_CSE, dept_ECE, etc.
+  // ── Derive Department Chart Data ──────────────────────────────────────────
   const deptData = useMemo(() => {
-    return Object.entries(analyticsData)
-      .filter(([key]) => key.startsWith('dept_'))
-      .map(([key, value]) => ({
-        name:  key.replace('dept_', '').replace(/_/g, ' '),
-        value: value as number,
-      }))
-      .filter((d) => d.value > 0)
+    const counts: Record<string, number> = {};
+    applications.forEach((app) => {
+      const dept = app.department || 'Other';
+      counts[dept] = (counts[dept] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [analyticsData]);
+  }, [applications]);
 
-  // Interest chart — keys are interest_Algebra, interest_Calculus, etc.
+  // ── Derive Interests Chart Data ───────────────────────────────────────────
   const interestData = useMemo(() => {
-    return Object.entries(analyticsData)
-      .filter(([key]) => key.startsWith('interest_'))
-      .map(([key, value]) => ({
-        name:  key.replace('interest_', '').replace(/_/g, ' '),
-        count: value as number,
-      }))
-      .filter((d) => d.count > 0)
+    const counts: Record<string, number> = {};
+    applications.forEach((app) => {
+      if (Array.isArray(app.interests)) {
+        app.interests.forEach((interest) => {
+          counts[interest] = (counts[interest] || 0) + 1;
+        });
+      }
+    });
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 8);
-  }, [analyticsData]);
+  }, [applications]);
 
-  // Timeline chart from full dataset (only when loaded)
+  // ── Derive Timeline Chart Data ───────────────────────────────────────────
   const timeData = useMemo(() => {
-    if (!fullData) return [];
     const dateCounts: Record<string, number> = {};
-    fullData.forEach((app) => {
+    applications.forEach((app) => {
       if (app.createdAt) {
         const rawDate = app.createdAt.substring(0, 10);
         dateCounts[rawDate] = (dateCounts[rawDate] || 0) + 1;
@@ -162,13 +173,13 @@ export const AnalyticsPage: React.FC = () => {
         }
         return { date: formattedDate, submissions: dateCounts[rawDate] };
       });
-  }, [fullData]);
+  }, [applications]);
 
-  // ── Export handlers (intentional full-collection fetch) ───────────────────
+  // ── Export Handlers ───────────────────────────────────────────────────────
   const handleExcelExport = async () => {
     setIsExporting(true);
     try {
-      const data = await fetchAllApplicationsForExport();
+      const data = applications.length > 0 ? applications : await fetchAllApplicationsForExport();
       const filename = await exportStudentsToExcel(
         data,
         `SIXATE MATHEMATICS CLUB — STUDENT REGISTRATIONS (${data.length} RECORDS)`
@@ -186,7 +197,7 @@ export const AnalyticsPage: React.FC = () => {
   const handleCSVExport = async () => {
     setIsExporting(true);
     try {
-      const data = await fetchAllApplicationsForExport();
+      const data = applications.length > 0 ? applications : await fetchAllApplicationsForExport();
       const filename = exportStudentsToCSV(data);
       setExportToast(`✓ CSV downloaded — ${data.length} records as ${filename}`);
       setTimeout(() => setExportToast(null), 5000);
@@ -198,7 +209,7 @@ export const AnalyticsPage: React.FC = () => {
     }
   };
 
-  const total = analyticsData.total ?? 0;
+  const total = statusCounts.total;
 
   return (
     <div className="min-h-screen bg-sixate-dark text-slate-100 flex flex-col md:flex-row font-body">
@@ -214,11 +225,11 @@ export const AnalyticsPage: React.FC = () => {
                 REGISTRATION ANALYTICS
               </h1>
               <span className="px-3 py-1 rounded-full bg-sixate-purple/20 border border-sixate-purple/40 text-sixate-green font-mono font-bold text-xs">
-                {isLoading ? 'Loading…' : `${total} Records`}
+                {isLoading ? 'Loading…' : `${total} Submissions`}
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Aggregated counters — loaded with 2 Firestore reads regardless of collection size.
+              Live metrics dynamically calculated from all student applications in Firestore.
             </p>
           </div>
 
@@ -226,14 +237,14 @@ export const AnalyticsPage: React.FC = () => {
             <button
               onClick={loadAnalytics}
               disabled={isLoading}
-              className="px-3.5 py-2.5 rounded-xl font-heading font-bold text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 disabled:opacity-60"
+              className="px-3.5 py-2.5 rounded-xl font-heading font-bold text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 disabled:opacity-60 cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} /> REFRESH
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} /> REFRESH ANALYTICS
             </button>
             <button
               onClick={handleExcelExport}
               disabled={isExporting}
-              className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+              className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
             >
               {isExporting
                 ? <><RefreshCw className="w-4 h-4 animate-spin" /> EXPORTING...</>
@@ -243,7 +254,7 @@ export const AnalyticsPage: React.FC = () => {
             <button
               onClick={handleCSVExport}
               disabled={isExporting}
-              className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+              className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
             >
               <FileText className="w-4 h-4 text-sixate-purple" /> 📄 DOWNLOAD CSV
             </button>
@@ -267,37 +278,37 @@ export const AnalyticsPage: React.FC = () => {
         )}
 
         {/* Info Note */}
-        <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-start gap-2 text-[11px] text-slate-400">
-          <Info className="w-3.5 h-3.5 text-sixate-purple shrink-0 mt-0.5" />
+        <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-start gap-2.5 text-xs text-slate-300">
+          <Info className="w-4 h-4 text-sixate-purple shrink-0 mt-0.5" />
           <span>
-            Charts use aggregated counters stored in Firestore (2 reads total). The Timeline chart requires loading all records — click the button below to load it on demand.
+            Analytics graphs update automatically whenever a student submits a registration form or status changes.
           </span>
         </div>
 
         {/* Status Summary Cards */}
-        {!isLoading && total > 0 && (
+        {!isLoading && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Pending',     key: 'pending',     color: 'text-indigo-300',  border: 'border-indigo-500/30' },
-              { label: 'Approved',    key: 'approved',    color: 'text-emerald-400', border: 'border-emerald-500/30' },
-              { label: 'Shortlisted', key: 'shortlisted', color: 'text-amber-400',   border: 'border-amber-500/30' },
-              { label: 'Rejected',    key: 'rejected',    color: 'text-rose-400',    border: 'border-rose-500/30' },
+              { label: 'Pending',     val: statusCounts.pending,     color: 'text-indigo-300',  border: 'border-indigo-500/30' },
+              { label: 'Approved',    val: statusCounts.approved,    color: 'text-emerald-400', border: 'border-emerald-500/30' },
+              { label: 'Shortlisted', val: statusCounts.shortlisted, color: 'text-amber-400',   border: 'border-amber-500/30' },
+              { label: 'Rejected',    val: statusCounts.rejected,    color: 'text-rose-400',    border: 'border-rose-500/30' },
             ].map((s) => (
-              <div key={s.key} className={`p-4 rounded-2xl bg-sixate-card/80 border ${s.border} shadow-md`}>
+              <div key={s.label} className={`p-4 rounded-2xl bg-sixate-card/80 border ${s.border} shadow-md`}>
                 <p className="text-[10px] font-heading font-bold uppercase tracking-wider text-slate-400">{s.label}</p>
-                <p className={`font-heading font-black text-2xl ${s.color} mt-1`}>{analyticsData[s.key] ?? 0}</p>
-                <p className="text-[10px] text-slate-600 mt-0.5">
-                  {total > 0 ? `${Math.round(((analyticsData[s.key] ?? 0) / total) * 100)}%` : '—'}
+                <p className={`font-heading font-black text-2xl ${s.color} mt-1`}>{s.val}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  {total > 0 ? `${Math.round((s.val / total) * 100)}% of total` : '—'}
                 </p>
               </div>
             ))}
           </div>
         )}
 
-        {/* Loading Skeleton for Charts */}
+        {/* Loading Skeleton */}
         {isLoading ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {[1, 2, 3].map((i) => (
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="p-6 rounded-3xl bg-sixate-card/80 border border-slate-800 h-72 animate-pulse" />
             ))}
           </div>
@@ -332,7 +343,7 @@ export const AnalyticsPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="h-64 flex items-center justify-center text-slate-500 text-sm">
-                  No year data yet — submit some applications to populate this chart.
+                  No year data available.
                 </div>
               )}
             </div>
@@ -353,13 +364,13 @@ export const AnalyticsPage: React.FC = () => {
                         data={deptData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={50}
+                        innerRadius={45}
                         outerRadius={75}
-                        paddingAngle={5}
+                        paddingAngle={4}
                         dataKey="value"
                       >
                         {deptData.map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          <Cell key={`cell-dept-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip
@@ -376,7 +387,7 @@ export const AnalyticsPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="h-64 flex items-center justify-center text-slate-500 text-sm">
-                  No department data yet.
+                  No department data available.
                 </div>
               )}
             </div>
@@ -394,7 +405,7 @@ export const AnalyticsPage: React.FC = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={interestData} layout="vertical" margin={{ left: 20 }}>
                       <XAxis type="number" stroke="#94A3B8" fontSize={11} allowDecimals={false} />
-                      <YAxis dataKey="name" type="category" stroke="#94A3B8" fontSize={11} width={150} />
+                      <YAxis dataKey="name" type="category" stroke="#94A3B8" fontSize={11} width={140} />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#0F172A', borderColor: '#7C3AED', borderRadius: '12px', fontSize: '12px' }}
                       />
@@ -408,12 +419,12 @@ export const AnalyticsPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="h-72 flex items-center justify-center text-slate-500 text-sm">
-                  No interest data yet.
+                  No interest data available.
                 </div>
               )}
             </div>
 
-            {/* Chart 4: Registrations Over Time (on-demand) */}
+            {/* Chart 4: Registrations Over Time */}
             <div className="p-6 rounded-3xl bg-sixate-card/80 border border-slate-800 space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
                 <h2 className="font-heading font-bold text-base text-white flex items-center gap-2">
@@ -421,30 +432,7 @@ export const AnalyticsPage: React.FC = () => {
                 </h2>
                 <span className="text-[10px] font-mono text-slate-400 uppercase">Timeline</span>
               </div>
-
-              {!fullData && !isLoadingFull && (
-                <div className="h-72 flex flex-col items-center justify-center gap-4">
-                  <p className="text-slate-400 text-xs text-center">
-                    Timeline requires loading all records from Firestore.<br />
-                    Click below to load on demand.
-                  </p>
-                  <button
-                    onClick={handleLoadTimeline}
-                    className="px-5 py-2.5 rounded-xl font-heading font-bold text-xs text-white bg-sixate-purple hover:bg-sixate-violet flex items-center gap-2"
-                  >
-                    <TrendingUp className="w-4 h-4" /> LOAD TIMELINE DATA
-                  </button>
-                </div>
-              )}
-
-              {isLoadingFull && (
-                <div className="h-72 flex items-center justify-center">
-                  <RefreshCw className="w-6 h-6 animate-spin text-sixate-purple" />
-                  <span className="ml-3 text-slate-400 text-sm">Loading all records…</span>
-                </div>
-              )}
-
-              {fullData && timeData.length > 0 && (
+              {timeData.length > 0 ? (
                 <div className="h-72 w-full pt-4">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={timeData}>
@@ -457,9 +445,7 @@ export const AnalyticsPage: React.FC = () => {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-              )}
-
-              {fullData && timeData.length === 0 && (
+              ) : (
                 <div className="h-72 flex items-center justify-center text-slate-500 text-sm">
                   No timeline data available.
                 </div>
