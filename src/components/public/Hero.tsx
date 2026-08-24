@@ -17,6 +17,15 @@ export const Hero: React.FC = () => {
         
         <div className="text-center max-w-4xl mx-auto space-y-6">
           
+          {/* Vardhaman College of Engineering Logo */}
+          <div className="flex justify-center mb-3.5 sm:mb-4">
+            <img
+              src="/vce_logo.png"
+              alt="Vardhaman College of Engineering"
+              className="w-16 sm:w-20 md:w-[105px] h-auto object-contain rounded-xl p-1 bg-white/95 shadow-lg shadow-black/30 border border-white/20 transition-transform duration-300 hover:scale-105"
+            />
+          </div>
+
           {/* Top Pill Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-sixate-purple/10 border border-sixate-purple/30 backdrop-blur-md text-sixate-green text-xs md:text-sm font-semibold tracking-wide shadow-lg shadow-sixate-purple/10 animate-pulse-glow">
             <Sparkles className="w-4 h-4 text-sixate-green animate-spin-slow" />
